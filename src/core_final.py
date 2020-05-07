@@ -30,8 +30,7 @@ class autonomy(object):
 		self.garage = False
 		self.garage_end = False
 		self.intersection = False
-		self.ramp = False
-
+		
 		##Initiate variables
 		self.leftLine = 0
 		self.midLine = 0
@@ -68,7 +67,7 @@ class autonomy(object):
 
 			##Place image processing code here!
 			frame, self.logs = imageProcessQueue(frame)
-			print(self.logs)
+			# print(self.logs)
 			self.angle = self.logs[1]
 
 			self.blobpub.publish(self.bridge.cv2_to_imgmsg(frame,"bgr8"))	 
@@ -82,26 +81,21 @@ class autonomy(object):
 			# print(type(data.transforms))
 			tags = len(data.transforms)
 			if tags == 2:
-				for m in data.transforms:
-					if m.transform.translation.z < 4.0:
-						self.garage = True
-						print("Enter Garage")
+				self.garage = True
+				print("Enter Garage")
 			else:
 				for m in data.transforms:
 					# print("zzz",m.fiducial_id)
 
-					# print("zzz",m.transform.translation.z)	
+					print("zzz",m.transform.translation.z)	
 					# For id = 6 - U-turn
-					if ~self.u_turn and m.fiducial_id == 6 and m.transform.translation.z < 2.0:
+					if m.fiducial_id == 6 and m.transform.translation.z < 1.5:
 						self.u_turn = True
 						# print("found 6")
 
 					# For id = 8 - right at intersection
-					elif ~ self.intersection and m.fiducial_id == 8 and m.transform.translation.z < 3.5:
+					elif m.fiducial_id == 8 and m.transform.translation.z < 2.0:
 						self.intersection = True
-					elif ~self.ramp and m.fiducial_id == 3 and m.transform.translation.z < 1.5:
-						self.ramp = True
-						print('zzzz',m.transform.translation.z)
 						# self.stopCar()
 						# self.wait(10)
 						# self.leftSpeed = 0.2
@@ -111,7 +105,7 @@ class autonomy(object):
 						# print("found 6")
 
 					# For id = 2 - end of garage
-					elif m.fiducial_id == 2 and m.transform.translation.z < 3:
+					elif m.fiducial_id == 2 and m.transform.translation.z < 1:
 						self.garage_end = True
 						# print("zzz",m.transform.translation.z)
 
@@ -126,23 +120,44 @@ class autonomy(object):
 
 			# logs[3] - duck pixels
 			# logs[4] ---> 1 = red, 2 = green, 0 = no_light
-			if self.garage:
-				print("garage")
-			elif self.ramp:
-				print("ramp")
-			elif self.u_turn:
-				print("u_turn")
-			elif self.intersection:
-				print("intersection")
-			elif self.logs[0] == 0 or self.logs[3] > 6000 or self.logs[4] == 1:
+			if self.logs[0] == 0 or self.logs[3] > 6000 or self.logs[4] == 1:
 				self.leftSpeed = 0
 				self.rightSpeed = 0
 				self.publishMotors()
 				self.integral = 0
 				self.prev_error = 5
 				print('stopping')
+			elif self.u_turn:
+				# print("here........................................")
+				self.leftSpeed = 0.5
+				self.rightSpeed = -0.5
+				self.publishMotors()	
+				print("before wait")
+				self.wait(1.3)
+				print("after wait")
+				self.u_turn = False
+			elif self.garage:
+				self.stopCar()
+				self.wait(3)
+				self.leftSpeed = 0.2
+				self.rightSpeed = 0.2
+				self.publishMotors()
+				if garage_end:
+					self.stopCar()
+					self.wait(10)
+					print("Parked")
+					self.garage = False
+					self.garage_end = False
+			elif self.intersection:
+				print("intersection")
+			# 	self.stopCar()
+			# 	self.wait(5)
+			# 	self.leftSpeed = 0.2
+			# 	self.rightSpeed = 0.1
+			# 	self.publishMotors()
+			# 	self.wait(1)
+			# 	self.intersection = False
 			elif self.logs[0] <= 2:
-				print("normal")
 				turn_speed = self.pid()
 				self.leftSpeed = (0.2 + turn_speed)*0.9
 				self.rightSpeed = (0.2 - turn_speed)*0.9
@@ -197,49 +212,28 @@ class autonomy(object):
 
 		while not rospy.is_shutdown():
 
-			if self.garage:
-				# self.stopCar()
-				# self.wait(3)
-				self.leftSpeed = 0.2
-				self.rightSpeed = 0.2
-				self.publishMotors()
-				if self.garage_end:
-					self.stopCar()
-					self.wait(10)
-					print("Parked")
-					self.garage = False
-					self.garage_end = False
-			elif self.ramp:
-				print("ramp")
+			if self.intersection:
 				self.stopCar()
 				self.wait(5)
-				self.leftSpeed = 0.8
-				self.rightSpeed = 0.8
+				self.leftSpeed = 0.4
+				self.rightSpeed = -0.1
 				self.publishMotors()
-				self.wait(1.0)
-				self.ramp = False
-			elif self.u_turn:
-				print("uturn")
-				self.stopCar()
-				self.wait(1)
-				self.leftSpeed = 0.5
-				self.rightSpeed = -0.5
-				self.publishMotors()	
-				print("before wait")
-				self.wait(1.5)
-				print("after wait")
-				self.u_turn = False
-			elif self.intersection:
-				print("intersection")
-				self.stopCar()
-				self.wait(5)
-				self.leftSpeed = 0.5
-				self.rightSpeed = -0.5
-				self.publishMotors()	
-				print("before wait")
-				self.wait(0.7)
-				print("after wait")
+				self.wait(3)
 				self.intersection = False
+			## timing codestop
+			# st_time = time.time()
+			# # print("Time diff: %f\n" % ((st_time - self.fin_time)*1000))
+			# turn_speed = self.pid()
+			# self.leftSpeed = 0.18 + turn_speed
+			# self.rightSpeed = 0.18 - turn_speed
+			# self.fin_time = st_time
+			# if self.logs[0] == 0:
+			# 	self.leftSpeed = 0
+			# 	self.rightSpeed = 0
+			# 	self.integral = 0
+			# ##Leave these lines at the end
+			# self.publishMotors()
+			# self.publishServo()
 			self.rate.sleep()
 
 	def pid(self):
@@ -367,7 +361,6 @@ class autonomy(object):
 
 	def wait(self,dur):
 		start = time.time()
-		# print(time.time())
 		while True:
 			if time.time() - start > dur:
 				break	

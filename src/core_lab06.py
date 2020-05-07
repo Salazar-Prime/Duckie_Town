@@ -11,7 +11,6 @@ from autonomy.msg import motors, lines, distance, servos #, leds
 
 # import messages
 from geometry_msgs.msg import *
-from fiducial_msgs.msg import *
 
 # user imports
 from image_utils import imageProcessQueue
@@ -26,12 +25,6 @@ class autonomy(object):
 		self.integral = 0
 		self.prev_error = 0
 		self.logs = [0, 0]
-		self.u_turn = False
-		self.garage = False
-		self.garage_end = False
-		self.intersection = False
-		self.ramp = False
-
 		##Initiate variables
 		self.leftLine = 0
 		self.midLine = 0
@@ -76,78 +69,22 @@ class autonomy(object):
 			# print(logs)
 			# self.fin_time = st_time
 
-		# callback for Fiducial_msgs
-		def fiducialNav(data):
-			# print(len(data.transforms))
-			# print(type(data.transforms))
-			tags = len(data.transforms)
-			if tags == 2:
-				for m in data.transforms:
-					if m.transform.translation.z < 4.0:
-						self.garage = True
-						print("Enter Garage")
-			else:
-				for m in data.transforms:
-					# print("zzz",m.fiducial_id)
-
-					# print("zzz",m.transform.translation.z)	
-					# For id = 6 - U-turn
-					if ~self.u_turn and m.fiducial_id == 6 and m.transform.translation.z < 2.0:
-						self.u_turn = True
-						# print("found 6")
-
-					# For id = 8 - right at intersection
-					elif ~ self.intersection and m.fiducial_id == 8 and m.transform.translation.z < 3.5:
-						self.intersection = True
-					elif ~self.ramp and m.fiducial_id == 3 and m.transform.translation.z < 1.5:
-						self.ramp = True
-						print('zzzz',m.transform.translation.z)
-						# self.stopCar()
-						# self.wait(10)
-						# self.leftSpeed = 0.2
-						# self.rightSpeed = 0.1
-						# self.publishMotors()
-						# self.wait(1)
-						# print("found 6")
-
-					# For id = 2 - end of garage
-					elif m.fiducial_id == 2 and m.transform.translation.z < 3:
-						self.garage_end = True
-						# print("zzz",m.transform.translation.z)
-
 		def speed_callback(data):
 						## timing code
-			# st_time = time.time()
+			st_time = time.time()
 			# print("Time diff: %f\n" % ((st_time - self.fin_time)*1000))
-			# print(self.u_turn)
-			# turn_speed = self.pid()
-			# self.leftSpeed = (0.2 + turn_speed)*0.9
-			# self.rightSpeed = (0.2 - turn_speed)*0.9
-
-			# logs[3] - duck pixels
-			# logs[4] ---> 1 = red, 2 = green, 0 = no_light
-			if self.garage:
-				print("garage")
-			elif self.ramp:
-				print("ramp")
-			elif self.u_turn:
-				print("u_turn")
-			elif self.intersection:
-				print("intersection")
-			elif self.logs[0] == 0 or self.logs[3] > 6000 or self.logs[4] == 1:
+			turn_speed_here = 0.3
+			turn_speed = self.pid()
+			self.leftSpeed = (0.25 + turn_speed)*0.9
+			self.rightSpeed = (0.25 - turn_speed)*0.9
+						# self.leftSpeed = turn_speed
+			# self.rightSpeed = -turn_speed
+			self.fin_time = st_time
+			if self.logs[0] == 0 or self.distance<=0.4:
 				self.leftSpeed = 0
 				self.rightSpeed = 0
-				self.publishMotors()
 				self.integral = 0
-				self.prev_error = 5
-				print('stopping')
-			elif self.logs[0] <= 2:
-				print("normal")
-				turn_speed = self.pid()
-				self.leftSpeed = (0.2 + turn_speed)*0.9
-				self.rightSpeed = (0.2 - turn_speed)*0.9
-				self.publishMotors()
-			
+				self.prev_error = 0
 
 			# if only one lane is detected
 			# if self.logs[0] == 1:
@@ -163,16 +100,13 @@ class autonomy(object):
 			# 		self.prev_error = 0
 
 			##Leave these lines at the end
-			# print(self.leftSpeed)
-			# # print(self.rightSpeed)
-			# if self.u_turn == False:
-			# 	self.publishMotors()			
+
+			self.publishMotors()			
 
 		#Subscribe to topics
 		rospy.Subscriber('raspicam_node/image', Image, imageProcessing)
 		rospy.Subscriber('imageProc', Image, speed_callback)
 		rospy.Subscriber('distance', distance, distanceCallback)
-		rospy.Subscriber('fiducial_transforms',FiducialTransformArray,fiducialNav)
 
 		# initialize
 		rospy.init_node('core', anonymous=True)
@@ -197,49 +131,20 @@ class autonomy(object):
 
 		while not rospy.is_shutdown():
 
-			if self.garage:
-				# self.stopCar()
-				# self.wait(3)
-				self.leftSpeed = 0.2
-				self.rightSpeed = 0.2
-				self.publishMotors()
-				if self.garage_end:
-					self.stopCar()
-					self.wait(10)
-					print("Parked")
-					self.garage = False
-					self.garage_end = False
-			elif self.ramp:
-				print("ramp")
-				self.stopCar()
-				self.wait(5)
-				self.leftSpeed = 0.8
-				self.rightSpeed = 0.8
-				self.publishMotors()
-				self.wait(1.0)
-				self.ramp = False
-			elif self.u_turn:
-				print("uturn")
-				self.stopCar()
-				self.wait(1)
-				self.leftSpeed = 0.5
-				self.rightSpeed = -0.5
-				self.publishMotors()	
-				print("before wait")
-				self.wait(1.5)
-				print("after wait")
-				self.u_turn = False
-			elif self.intersection:
-				print("intersection")
-				self.stopCar()
-				self.wait(5)
-				self.leftSpeed = 0.5
-				self.rightSpeed = -0.5
-				self.publishMotors()	
-				print("before wait")
-				self.wait(0.7)
-				print("after wait")
-				self.intersection = False
+			## timing code
+			# st_time = time.time()
+			# # print("Time diff: %f\n" % ((st_time - self.fin_time)*1000))
+			# turn_speed = self.pid()
+			# self.leftSpeed = 0.18 + turn_speed
+			# self.rightSpeed = 0.18 - turn_speed
+			# self.fin_time = st_time
+			# if self.logs[0] == 0:
+			# 	self.leftSpeed = 0
+			# 	self.rightSpeed = 0
+			# 	self.integral = 0
+			# ##Leave these lines at the end
+			# self.publishMotors()
+			# self.publishServo()
 			self.rate.sleep()
 
 	def pid(self):
@@ -269,14 +174,18 @@ class autonomy(object):
 			speed = 0.2
 		elif speed < -0.2:
 			speed = -0.2
+		elif speed < 0.1 and speed > 0:
+			speed = 0.1
+		elif speed > -0.1 and speed < 0:
+			speed = -0.1
 		# print("Speed: ", speed/10000)
 
-		if self.logs[0] == 1:
-			if self.logs[2][0] == 1:
-				speed=abs(speed)/1.1
-			if self.logs[2][1] == 1:
-				speed=-abs(speed)/1.1
-		# print(speed)
+		# if self.logs[0] == 1:
+		# 	if self.logs[2][0] == 1:
+		# 		speed=abs(speed)/1.1
+		# 	if self.logs[2][1] == 1:
+		# 		speed=-abs(speed)/1.1
+		print(speed)
 		return(speed)
 
 	def move(self):
@@ -367,10 +276,10 @@ class autonomy(object):
 
 	def wait(self,dur):
 		start = time.time()
-		# print(time.time())
 		while True:
 			if time.time() - start > dur:
 				break	
+		self.stopCar()
 	
 
 if __name__ == '__main__':
